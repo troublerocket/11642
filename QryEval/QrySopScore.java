@@ -38,7 +38,9 @@ public class QrySopScore extends QrySop {
 
     //  STUDENTS::
     //  Add support for other retrieval models here.
-
+    else if(r instanceof RetrievalModelRankedBoolean) {
+    	return this.getScoreRankedBoolean(r);
+    }
     else {
       throw new IllegalArgumentException
         (r.getClass().getName() + " doesn't support the SCORE operator.");
@@ -58,6 +60,14 @@ public class QrySopScore extends QrySop {
       return 1.0;
     }
   }
+  
+  public double getScoreRankedBoolean (RetrievalModel r) throws IOException {
+	  if(!this.docIteratorHasMatchCache()) {
+		  return 0.0;
+	  }else {
+		  return ((QryIop)this.args.get(0)).docIteratorGetMatchPosting().tf;
+	  }
+	  }
 
   /**
    *  Initialize the query operator (and its arguments), including any

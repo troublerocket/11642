@@ -43,11 +43,42 @@ public class QryIopNear extends QryIop{
         if (this.args.size() < 2) {
         	return;
         }
-
+        
         while(this.docIteratorHasMatchAll(null)) {
-        	int doc_id = this.docIteratorGetMatch();
-    		this.docIteratorAdvancePast(doc_id);
-
+        	QryIop first_term = (QryIop)this.getArg(0);
+        	int doc_id = first_term.docIteratorGetMatch();
+            ArrayList<Integer> postings = new ArrayList<>();
+            while(first_term.locIteratorHasMatch()) {//first term match loop
+            	int prev_loc = first_term.locIteratorGetMatch();
+            	int i;
+            	for(i = 1; i < this.args.size(); i++) {
+            		QryIop curr_term = (QryIop)this.getArg(i);
+            		curr_term.locIteratorAdvancePast(prev_loc);
+            		if(!curr_term.locIteratorHasMatch())
+            			break;
+            		else {
+            			int curr_loc = curr_term.locIteratorGetMatch();
+            			if(curr_loc - prev_loc > this.distance)
+            				break;
+            			else
+            				prev_loc = curr_loc;
+            		}
+            		
+            	}// loop through all other terms to check match & distance
+            	if(i == this.args.size()) {//complete loop through all the terms
+            		postings.add(prev_loc);
+            		for(Qry q:this.args)
+            			((QryIop)q).locIteratorAdvance();
+            	}
+            	else
+            		first_term.locIteratorAdvance();  		
+            }// first term loop	
+            
+            if(!postings.isEmpty())
+            	this.invertedList.appendPosting(doc_id, postings);
+            
+            this.getArg(0).docIteratorAdvancePast(doc_id);
+        	
         }// doc loop
 
 	   

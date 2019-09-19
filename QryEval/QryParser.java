@@ -89,7 +89,8 @@ public class QryParser {
     
     String [] proximity_op = operatorNameLowerCase.split("/");
     operatorNameLowerCase = proximity_op[0];
-    operatorDistance = Integer.parseInt(proximity_op[1]);
+    if (operatorNameLowerCase.equals("#near"))
+    		operatorDistance = Integer.parseInt(proximity_op[1]);
 
 
     switch (operatorNameLowerCase) {
@@ -106,9 +107,11 @@ public class QryParser {
 	
       case "#and":
     operator = new QrySopAnd ();
+    break;
     
       case "#near":
     operator = new QryIopNear (operatorDistance);
+    break;
 
       default:
 	syntaxError ("Unknown query operator " + operatorName);

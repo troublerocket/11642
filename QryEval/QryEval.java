@@ -227,7 +227,7 @@ public class QryEval {
    */
   static void printResults(String queryName, ScoreList result, String path, int length) throws IOException {
 	  result.sort();
-      BufferedWriter output = new BufferedWriter(new FileWriter(path));
+      BufferedWriter output = new BufferedWriter(new FileWriter(path, true));
 	  int output_length;
 	  if(result.size() > length)
 		  output_length = length;
@@ -236,8 +236,8 @@ public class QryEval {
 	  //System.out.println(queryName + ":  ");
 	  if (result.size() < 1) {
 		  //System.out.println("\tNo results.");
-		  String outstring = String.format("%s\t%s\t%s\t%d\t%d\t%s\n", queryName, "Q0", "dummy",
-				  "1", "0", "run-1");
+		  String outstring = String.format("%s\t%s\t%s\t%d\t%.1f\t%s\n", queryName, "Q0", "dummy",
+				  1, 0.0, "run-1");
 		  System.out.println(outstring);
 		  output.write(outstring);
 	  } 
@@ -245,7 +245,7 @@ public class QryEval {
 		  for (int i = 0; i < output_length; i++) {
 	        //System.out.println("\t" + i + ":  " + Idx.getExternalDocid(result.getDocid(i)) + ", "
 	        //    + result.getDocidScore(i));
-			  String outstring = String.format("%s\t%s\t%s\t%d\t%s\t%s\n",queryName, "Q0", 
+			  String outstring = String.format("%s\t%s\t%s\t%d\t%.1f\t%s\n",queryName, "Q0", 
 						Idx.getExternalDocid(result.getDocid(i)), i+1, result.getDocidScore(i), "run-1");
 			  System.out.println(outstring);
 			  output.write(outstring);
