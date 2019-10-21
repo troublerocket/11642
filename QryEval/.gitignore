@@ -22,3 +22,12 @@
 /ScoreList.class
 /TermVector.class
 /Timer.class
+/RetrievalModelBM25.class
+/RetrievalModelIndri.class
+/QryIopWindow.class
+/QrySopWAnd.class
+/QryWSop.class
+/QrySopWSum.class
+/QrySopSum.class
+/QryEval$1.class
+/MapUtil.class

@@ -5,7 +5,9 @@
  *  Compatible with Lucene 8.1.1.
  */
 import java.io.*;
+import java.text.DecimalFormat;
 import java.util.*;
+
 
 import org.apache.lucene.index.*;
 
@@ -57,7 +59,24 @@ public class QryEval {
 
     Idx.open (parameters.get ("indexPath"));
     RetrievalModel model = initializeRetrievalModel (parameters);
-
+    //if(parameters.get("fb").equals("true"))
+    //System.out.println("true");
+    if(parameters.containsKey("fb") && parameters.get("fb").equals("true")) {
+    	String fbInitialRankingFile = "";
+    	//String fbExpansionFile = "";
+    	//System.out.println(parameters);
+    	if(parameters.containsKey("fbInitialRankingFile")) {
+    		fbInitialRankingFile = parameters.get("fbInitialRankingFile");
+    	}
+    		//System.out.println(parameters.get("fbInitialRankingFile"));
+    		((RetrievalModelIndri)model).expansionParams(Boolean.parseBoolean(parameters.get("fb")),
+    				Integer.parseInt(parameters.get("fbDocs")), Integer.parseInt(parameters.get("fbTerms")),
+    				Integer.parseInt(parameters.get("fbMu")), Double.parseDouble(parameters.get("fbOrigWeight")),
+    				fbInitialRankingFile, parameters.get("fbExpansionQueryFile"));
+    	
+    }
+    
+  
     //  Perform experiments.
     
     processQueryFile(parameters.get("queryFilePath"), parameters.get("trecEvalOutputPath"),
@@ -95,6 +114,23 @@ public class QryEval {
     else if(modelString.equals("rankedboolean")){
     	
     	model = new RetrievalModelRankedBoolean();
+    }
+    
+    else if (modelString.equals("bm25")) {
+        double k_1 = Double.parseDouble(parameters.get("BM25:k_1"));
+        double b = Double.parseDouble(parameters.get("BM25:b"));
+        double k_3 = Double.parseDouble(parameters.get("BM25:k_3"));
+        
+        model = new RetrievalModelBM25(k_1, b, k_3);
+        
+    } else if (modelString.equals("indri")) {
+    	
+        double mu = Double.parseDouble(parameters.get("Indri:mu"));
+        //System.out.println("mu:"+mu);
+        double lambda = Double.parseDouble(parameters.get("Indri:lambda"));
+        //System.out.println("lambda:"+lambda);
+
+        model = new RetrievalModelIndri(mu, lambda);
     }
 
     else {
@@ -154,6 +190,8 @@ public class QryEval {
         while (q.docIteratorHasMatch (model)) {
           int docid = q.docIteratorGetMatch ();
           double score = ((QrySop) q).getScore (model);
+          //if(Idx.getExternalDocid(docid).equals("GX233-75-15885072"))
+          //System.out.println(score);
           results.add (docid, score);
           q.docIteratorAdvancePast (docid);
         }
@@ -168,18 +206,22 @@ public class QryEval {
    *  Process the query file.
    *  @param queryFilePath Path to the query file
    *  @param model A retrieval model that will guide matching and scoring
-   *  @throws IOException Error accessing the Lucene index.
+ * @throws Exception 
    */
-  static void processQueryFile(String queryFilePath, String outputPath, int length,
+  static void processQueryFile(String queryFilePath, String trecEvalOutputPath, int length,
                                RetrievalModel model)
-      throws IOException {
+      throws Exception {
 
     BufferedReader input = null;
+    //BufferedWriter output = null;
+    BufferedWriter expansion = null;
+    
 
     try {
       String qLine = null;
 
       input = new BufferedReader(new FileReader(queryFilePath));
+
 
       //  Each pass of the loop processes one query.
 
@@ -187,28 +229,113 @@ public class QryEval {
 
         printMemoryUsage(false);
         System.out.println("Query " + qLine);
-	String[] pair = qLine.split(":");
+        String[] pair = qLine.split(":");
+        ScoreList curr_scorelist = null;
 
-	if (pair.length != 2) {
-          throw new IllegalArgumentException
-            ("Syntax error:  Each line must contain one ':'.");
-	}
+		if (pair.length != 2) {
+	          throw new IllegalArgumentException
+	            ("Syntax error:  Each line must contain one ':'.");
+		}
 
-	String qid = pair[0];
-	String query = pair[1];
+		String qid = pair[0];
+		String query = pair[1];
+	
+		if(model instanceof RetrievalModelIndri) {
+			//System.out.println(((RetrievalModelIndri)model).fb);
+			if(((RetrievalModelIndri)model).fb == true) {
+				if(((RetrievalModelIndri)model).fbInitialRankingFile.equals("")) {
+					curr_scorelist = processQuery(query, model);
+				}
+				else {
+					Map<String, ScoreList> scorelist_map = readInitialRankingFile(((RetrievalModelIndri)model).fbInitialRankingFile);
+					curr_scorelist = scorelist_map.get(qid);
+				}
+					
+				String expandedQuery = expandQuery(curr_scorelist, (RetrievalModelIndri)model);
+                //System.out.println(" expanded query " + expandedQuery);
+                //System.out.println(" fbExpansionQueryFile " + ((RetrievalModelIndri)model).fbExpansionQueryFile);
+				expansion = new BufferedWriter(new FileWriter(((RetrievalModelIndri)model).fbExpansionQueryFile,true));
+				expansion.write(qid + ": " + expandedQuery + "\n");
+				expansion.close();
+
+                double fbOrigWeight = ((RetrievalModelIndri)model).fbOrigWeight;
+                
+				
+				//System.out.println(qid + ": " + expandedQuery + "\n");
+				//expansion.close();
+                String combined_query = "#wand (" + String.valueOf(fbOrigWeight) + " " + " #and (" + query + ") " + " "
+                        + String.valueOf(1 - fbOrigWeight) + " " + expandedQuery + " )";
+                
+                query = combined_query;
+                //System.out.println(" combined query " + combined_query);
+                 //results= processQuery(combined_query, model);
+	                
+			}
+		}
+		
+	
         ScoreList results = processQuery(query, model);
+        
 
         if (results != null) { 
-          printResults(qid, results, outputPath, length);
+          printResults(qid, results, trecEvalOutputPath, length);
           System.out.println();
         }
+        
       }
     } catch (IOException ex) {
       ex.printStackTrace();
     } finally {
       input.close();
+      // check close
+      if(expansion != null)
+    	  expansion.close();
+      
+      
     }
   }
+  
+  static Map<String, ScoreList> readInitialRankingFile(String fbInitialRankingFile) throws Exception{
+      Map<String, ScoreList> scorelist_map = new HashMap<>();
+      BufferedReader input = new BufferedReader(new FileReader(fbInitialRankingFile));
+      String line = null;
+      String prev_qid = null;
+      ScoreList scorelist = new ScoreList();
+
+      while ((line = input.readLine()) != null) {
+    	  
+    	  String[] data = line.split(" ");
+    	  
+          String query_id = data[0];
+          String doc_id = data[2];
+          double score = Double.parseDouble(data[4]);
+          
+
+          if(query_id.equals(prev_qid)) {
+        	  scorelist.add(Idx.getInternalDocid(doc_id), score);
+          }
+          else {
+        	  scorelist.sort();
+        	  scorelist_map.put(prev_qid, new ScoreList(scorelist));
+        	  scorelist = new ScoreList(); 
+        	  scorelist.add(Idx.getInternalDocid(doc_id), score);
+
+          }
+          // update previous query id
+          prev_qid = query_id;
+    	  
+      }
+      //last query id
+	  scorelist.sort();
+	  scorelist_map.put(prev_qid, new ScoreList(scorelist));
+	  
+      input.close();
+      return scorelist_map;
+      
+      
+
+  }
+  
 
   /**
    * Print the query results.
@@ -236,7 +363,7 @@ public class QryEval {
 	  //System.out.println(queryName + ":  ");
 	  if (result.size() < 1) {
 		  //System.out.println("\tNo results.");
-		  String outstring = String.format("%s\t%s\t%s\t%d\t%.1f\t%s\n", queryName, "Q0", "dummy",
+		  String outstring = String.format("%s %s %s %d %f %s\n", queryName, "Q0", "dummy",
 				  1, 0.0, "run-1");
 		  System.out.println(outstring);
 		  output.write(outstring);
@@ -245,8 +372,10 @@ public class QryEval {
 		  for (int i = 0; i < output_length; i++) {
 	        //System.out.println("\t" + i + ":  " + Idx.getExternalDocid(result.getDocid(i)) + ", "
 	        //    + result.getDocidScore(i));
-			  String outstring = String.format("%s\t%s\t%s\t%d\t%.1f\t%s\n",queryName, "Q0", 
+			  String outstring = String.format("%s\t%s\t%s\t%d\t%f\t%s\n",queryName, "Q0", 
 						Idx.getExternalDocid(result.getDocid(i)), i+1, result.getDocidScore(i), "run-1");
+			  //String outstring = queryName + " Q0 "+ Idx.getExternalDocid(result.getDocid(i)) + " "
+			//		  + (i+1) + " " + result.getDocidScore(i) + " run-1\n";
 			  System.out.println(outstring);
 			  output.write(outstring);
 	      }
@@ -305,5 +434,114 @@ public class QryEval {
 
     return parameters;
   }
+  
+  // NEED TO COMPLETE
+  
+  private static String expandQuery(ScoreList score_list, RetrievalModelIndri model) throws IOException {
+      StringBuilder expandedQuery = new StringBuilder("#wand (");
+
+      Map<String, Double> termScores = new HashMap<>();     // stores score for each term t
+      Map<String, Double> termMLE = new HashMap<>();        // stores corpus-specific statistic for term t
+      Map<String, List<Integer>> invList = new HashMap<>(); // inverted list for term t
+
+      // The initial query Qoriginal retrieves the top-ranked n documents
+      // int docSize = Math.min(fbDocs, referenceRanking.size());
+      score_list.truncate((int)model.fbDocs);
+
+      // Extract potential expansion terms from top n documents
+
+      // `Idx.getSumOfFieldLengths("body")` is extremely slow, to boost speed,
+      // better to cache it one time rather than compute it every time we call `expandQuery`
+      double corpusLen = Idx.getSumOfFieldLengths("body");
+
+      for (int i = 0; i < score_list.size(); i++) {
+          int docid = score_list.getDocid(i);
+          double docScore = score_list.getDocidScore(i);
+          double docLen = Idx.getFieldLength("body", docid);
+
+          // Retrieve the term vector for externalID
+          TermVector termVector = new TermVector(docid, "body");
+
+          // Calculate a score for each potential expansion term
+          // termVector[0] = null: START FROM 1 !!!
+          for (int j = 0; j < termVector.stemsLength(); j++) {
+              String term = termVector.stemString(j);
+
+              // Ignore any candidate expansion term that contains a period ('.') or a comma (',')
+              if (term == null || term.contains(".") || term.contains(",")) 
+            	  continue;
+
+              // Update inverted list for the current term
+              if (invList.containsKey(term)) {
+                  invList.get(term).add(docid);
+              } else {
+                  List<Integer> docs = new ArrayList<>();
+                  docs.add(docid);
+                  invList.put(term, docs);
+              }
+
+              double tf = termVector.stemFreq(j);
+
+              // Get/Update corpus-specific statistic (p(t|C) for the current term
+              double mle;
+              
+              if (termMLE.containsKey(term)) {
+                  mle = termMLE.get(term);
+              } 
+              else {
+                  double ctf = termVector.totalStemFreq(j);
+                  mle = ctf / corpusLen;
+                  termMLE.put(term, mle);
+              }
+
+              double score = (tf + model.fbMu * mle) / (docLen + model.fbMu);
+              double idf = Math.log(1. / mle);
+              double weightedScore = score * docScore * idf;
+
+              termScores.put(term, termScores.getOrDefault(term, 0d) + weightedScore);
+          }
+      }
+
+      /*
+       * Now we get m expansion terms from top n docs
+       * However, the term score for these m terms is not complete yet
+       * because some of the top n docs (referenceRanking) might not contain all the m terms
+       * but they still need to contribute to the final term score
+       * Therefore, we need to update term score on docs whose tf = 0
+       * */
+
+      for (String term : termScores.keySet()) {
+          List<Integer> docs = invList.get(term);
+          for (int i = 0; i < score_list.size(); i++) {
+              int docid = score_list.getDocid(i);
+              if (!docs.contains(docid)) {
+                  double docScore = score_list.getDocidScore(i);
+                  double docLen = Idx.getFieldLength("body", docid);
+
+                  double mle = termMLE.get(term);
+                  double score = (0 + model.fbMu * mle) / (docLen + model.fbMu);
+                  double idf = Math.log(1. / mle);
+                  double weightedScore = score * docScore * idf;
+
+                  termScores.put(term, termScores.get(term) + weightedScore);
+              }
+          }
+      }
+
+      // Sort the term scores by score value, leaving only m top terms in the map
+      termScores = MapUtil.sortByDescValue(termScores, (int)model.fbTerms);
+
+      // Use the top m terms to create an expansion query Qlearned
+      for (Map.Entry<String, Double> entry : termScores.entrySet()) {
+          String term = entry.getKey();
+          double score = entry.getValue();
+          expandedQuery.append(String.format("%.4f %s ", score, term));
+      }
+
+      expandedQuery.append(")");
+      return expandedQuery.toString();
+	  
+  }
+
 
 }

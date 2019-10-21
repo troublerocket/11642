@@ -56,7 +56,7 @@ public abstract class QryIop extends Qry {
   /**
    *  The index of the document that the docIterator points to now.
    */
-  private int docIteratorIndex = QryIop.INVALID_ITERATOR_INDEX;
+  public int docIteratorIndex = QryIop.INVALID_ITERATOR_INDEX;
 
   /**
    *  The index of the location that the locIterator points to now.
@@ -242,5 +242,13 @@ public abstract class QryIop extends Qry {
     return (this.locIteratorIndex <
             this.invertedList.getTf (this.docIteratorIndex));
   }
+  
+  public InvList getInvertedList() {
+	  return this.invertedList;
+	  
+  }
+  
+
+ 
 
 }

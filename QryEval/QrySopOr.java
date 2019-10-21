@@ -79,5 +79,10 @@ public class QrySopOr extends QrySop {
     	return max;
     }
   }
+  
+  
+  public double getDefaultScore(RetrievalModel r, long docid) throws IOException {
+	  return 0.0;
+  }
 
 }

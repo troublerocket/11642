@@ -1,0 +1,7 @@
+indexPath=../index-gov2
+queryFilePath=../HW2-Exp-2.1.qry
+trecEvalOutputPath=../HW2-Exp-2.1d.teIn
+trecEvalOutputLength=100
+retrievalAlgorithm=Indri
+Indri:mu=10000
+Indri:lambda=0.0

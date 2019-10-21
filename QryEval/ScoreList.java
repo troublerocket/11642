@@ -124,4 +124,13 @@ public class ScoreList {
     this.scores.clear();
     this.scores = truncated;
   }
+  public ScoreList() {
+      scores = new ArrayList<>();
+  }
+  
+  public ScoreList(ScoreList scorelist) {
+      scores = new ArrayList<>(scorelist.scores);
+  }
+  
+  
 }

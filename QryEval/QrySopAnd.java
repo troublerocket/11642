@@ -5,7 +5,7 @@
 import java.io.*;
 
 /**
- *  The OR operator for all retrieval models.
+ *  The AND operator for all retrieval models.
  */
 public class QrySopAnd extends QrySop {
 
@@ -32,13 +32,16 @@ public class QrySopAnd extends QrySop {
     else if(r instanceof RetrievalModelRankedBoolean) {
     	return this.getScoreRankedBoolean(r);
     }
+    else if (r instanceof RetrievalModelIndri) {
+        return this.getScoreIndri(r);
+    } 
 
     //  STUDENTS::
     //  Add support for other retrieval models here.
 
     else {
       throw new IllegalArgumentException
-        (r.getClass().getName() + " doesn't support the OR operator.");
+        (r.getClass().getName() + " doesn't support the AND operator.");
     }
   }
   
@@ -69,15 +72,61 @@ public class QrySopAnd extends QrySop {
     	for (Qry q:this.args) {
     		if(q.docIteratorHasMatch(r)) {
     			if(q.docIteratorGetMatch() == this.docIteratorGetMatch()) {
-    				double cur_score = ((QrySop)q).getScore(r);
-    				if(cur_score < min) {
-    					min = cur_score;
+    				double curr_score = ((QrySop)q).getScore(r);
+    				if(curr_score < min) {
+    					min = curr_score;
     				}
     			}
     		}
     	}
     	return min;
     }
+  }
+  
+  
+  private double getScoreIndri(RetrievalModel r) throws IOException {
+
+      int docid = this.docIteratorGetMatch();
+      double score = 1.0;
+
+      for (Qry q : this.args) {
+    	  
+          if (q.docIteratorHasMatch(r) && q.docIteratorGetMatch() == docid) {
+        	  
+              //score *= ((QrySop) q).getScore(r);
+        	  score *= Math.pow(((QrySop)q).getScore(r), 1.0/this.args.size());
+          }
+          
+          else {
+        	  
+              //score *= ((QrySop) q).getDefaultScore(r, docid);
+        	  score *= Math.pow(((QrySop) q).getDefaultScore(r, docid), 1.0/this.args.size());
+
+          }
+          
+
+      }
+      
+      //if(Idx.getExternalDocid(docid).equals("GX233-75-15885072"))
+      //System.out.println(score);
+      //System.out.println("score:"+Math.pow(score, 1.0 / this.args.size()));
+      //return Math.pow(score, 1.0 / this.args.size());
+      return score;
+
+  }
+
+
+  public double getDefaultScore(RetrievalModel r, long docid) throws IOException {
+
+      double score = 1.0;
+
+      for ( Qry q : this.args ) {
+          //score *= ((QrySop) q).getDefaultScore(r, docid);
+    	  score *= Math.pow(((QrySop) q).getDefaultScore(r, docid), 1.0/this.args.size());
+      }
+
+      //return Math.pow(score, 1.0 / this.args.size());
+      return score;
   }
 
 }

@@ -91,6 +91,9 @@ public class QryParser {
     operatorNameLowerCase = proximity_op[0];
     if (operatorNameLowerCase.equals("#near"))
     		operatorDistance = Integer.parseInt(proximity_op[1]);
+    else if (operatorNameLowerCase.equals("#window")) {
+    	operatorDistance = Integer.parseInt(proximity_op[1]);
+    }
 
 
     switch (operatorNameLowerCase) {
@@ -111,6 +114,23 @@ public class QryParser {
     
       case "#near":
     operator = new QryIopNear (operatorDistance);
+    break;
+    
+      case "#window":
+    operator = new QryIopWindow (operatorDistance);
+    break;
+
+    
+      case "#sum":
+    operator = new QrySopSum ();
+    break;
+    
+      case "#wand":
+    operator = new QrySopWAnd();
+    break;
+    
+      case "#wsum":
+    operator = new QrySopWSum();
     break;
 
       default:
@@ -312,6 +332,7 @@ public class QryParser {
     //  Note: An argument can be a token that produces multiple terms
     //  (e.g., "near-death") or a subquery (e.g., "#and (a b c)").
     //  Recurse on subqueries.
+    
 
     while (queryString.length() > 0) {
 	
@@ -324,12 +345,21 @@ public class QryParser {
 
       Qry[] qargs = null;
       PopData<String,String> p;
-
+      double weight = 1.0;
+      
+      if (queryTree instanceof QryWSop) {
+          p = popTerm(queryString);
+          weight = Double.parseDouble(p.getPopped().trim());
+          queryString = p.getRemaining();
+      }
+      
       if (queryString.charAt(0) == '#') {	// Subquery
 	  p = popSubquery (queryString);
 	  qargs = new Qry[1];
 	  qargs[0] = parseString (p.getPopped());
-      } else {					// Term
+	  
+      }
+      else {					// Term
 	  p = popTerm (queryString);
 	  qargs = createTerms (p.getPopped());
       }
@@ -343,6 +373,11 @@ public class QryParser {
 	//  STUDENTS WILL NEED TO ADJUST THIS BLOCK TO HANDLE WEIGHTS IN HW2
 
 	queryTree.appendArg (qargs[i]);
+      }
+      if (queryTree instanceof QryWSop) {
+
+          ((QryWSop) queryTree).addWeight(weight);
+
       }
     }
 

@@ -80,15 +80,7 @@ public class QryIopNear extends QryIop{
             this.getArg(0).docIteratorAdvancePast(doc_id);
         	
         }// doc loop
-
-	   
-	    
-	    
-	    
-	    
-	    
-	    
-	
+ 	
 	}
 
 }
