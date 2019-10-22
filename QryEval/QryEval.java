@@ -12,6 +12,9 @@ import java.util.*;
 
 import org.apache.lucene.index.*;
 
+import static java.lang.Math.*;
+
+
 /**
  *  This software illustrates the architecture for the portion of a
  *  search engine that evaluates queries.  It is a guide for class
@@ -246,13 +249,14 @@ public class QryEval {
 			if(((RetrievalModelIndri)model).fb == true) {
 				if(((RetrievalModelIndri)model).fbInitialRankingFile.equals("")) {
 					curr_scorelist = processQuery(query, model);
+					curr_scorelist.sort();
 				}
 				else {
 					Map<String, ScoreList> scorelist_map = readInitialRankingFile(((RetrievalModelIndri)model).fbInitialRankingFile);
 					curr_scorelist = scorelist_map.get(qid);
 				}
 					
-				String expandedQuery = expandQuery(curr_scorelist, (RetrievalModelIndri)model);
+				String expandedQuery = expandQuery2(curr_scorelist, (RetrievalModelIndri)model);
                 //System.out.println(" expanded query " + expandedQuery);
                 //System.out.println(" fbExpansionQueryFile " + ((RetrievalModelIndri)model).fbExpansionQueryFile);
 				expansion = new BufferedWriter(new FileWriter(((RetrievalModelIndri)model).fbExpansionQueryFile,true));
@@ -441,33 +445,130 @@ public class QryEval {
   
   // NEED TO COMPLETE
   
+  private static String expandQuery2(ScoreList scorelist, RetrievalModelIndri model) throws IOException{
+      StringBuilder expandedQuery = new StringBuilder("#wand (");
+	  Map<String, List<Integer>> term_doc_list = new HashMap<>();
+	  Map<String, Double> candidateTermScore = new HashMap<>();
+	  
+	  scorelist.truncate((int)model.fbDocs);
+	  
+	  // loop through  docs in scorelist
+	  //System.out.println(scorelist.size());
+	  //int limit = min(scorelist.size(),(int)model.fbDocs);
+	  //System.out.println(limit);
+	  for(int i = 0; i < scorelist.size(); i++) {
+		  int docid = scorelist.getDocid(i);
+		  double docscore = scorelist.getDocidScore(i);
+		  // Get the TermVector for this doc
+		  TermVector tv = new TermVector(docid, "body");
+		  // check 
+		  long doc_len = tv.positionsLength();
+		  for(int j = 0; j < tv.stemsLength(); j ++) {
+			  String term  = tv.stemString(j);
+			  if(term == null || term.contains(".") || term.contains(","))
+				  continue;
+			  if(term_doc_list.containsKey(term)) {
+				  //check
+				  //term_doc_list.get(term).add(docid);
+                  List<Integer> doc_list = term_doc_list.get(term);
+                  doc_list.add(docid);
+                  term_doc_list.put(term, doc_list);
+			  }
+			  else {
+                  List<Integer> doc_list = new ArrayList<>();
+                  doc_list.add(docid);
+                  term_doc_list.put(term, doc_list);
+			  }
+			  double tf = (double)tv.stemFreq(j);
+	          double ctf = (double)Idx.getTotalTermFreq("body", term);
+	          double collection_len = (double)Idx.getSumOfFieldLengths("body");
+	          // check double
+	          double mle = ctf / collection_len;
+	          double ptd = ( tf + model.fbMu * 1.0 * mle ) / (doc_len + model.fbMu);
+	          //System.out.println(ptd);
+	          double idf = Math.log(collection_len / ctf);
+	          double expansion_score = ptd * idf * docscore;
+	          //System.out.println(expansion_score);
+	          if(candidateTermScore.containsKey(term)) 
+	        	  candidateTermScore.put(term, expansion_score + candidateTermScore.get(term)); 
+	          else
+	        	  candidateTermScore.put(term, expansion_score); 
+		  }
+	  }
+	  for(String term : candidateTermScore.keySet()) {
+		  List<Integer> doc_list = term_doc_list.get(term);
+          for (int i = 0; i < scorelist.size(); i++) {
+              int docid = scorelist.getDocid(i);
+              if(doc_list.contains(docid))
+            	  continue;
+              double score = scorelist.getDocidScore(i);
+              //System.out.println(score);
+              double doc_len = Idx.getFieldLength("body", docid);
+              //System.out.println(doc_len);
+              double ctf = Idx.getTotalTermFreq("body", term);
+              //System.out.println(ctf);
+              double collection_len = Idx.getSumOfFieldLengths("body");
+              //System.out.println(collection_len);
+              double mle = ctf / collection_len;
+              //System.out.println(mle);
+              //System.out.println(model.fbMu);
+	          double ptd = ( 0.0 + model.fbMu * 1.0 * mle ) / (doc_len + model.fbMu * 1.0);
+	          //System.out.println("EQUALS");
+              //System.out.println(ptd);
+              double idf =  Math.log(collection_len / ctf);
+              double expansion_score = ptd * idf * score;
+              //System.out.println(expansion_score);
+              candidateTermScore.put(term, expansion_score + candidateTermScore.get(term));
+          }  
+	  }
+	  /*
+	  for(String term: candidateTermScore.keySet()) {
+		  System.out.println(term);
+		  System.out.println(candidateTermScore.get(term));
+	  }
+	  */
+	  List<Map.Entry<String, Double>> list = new ArrayList<>(candidateTermScore.entrySet());
+	  list.sort(Map.Entry.comparingByValue());
+	  Collections.reverse(list);
+	  /*
+	  for(String term: candidateTermScore.keySet()) {
+		  System.out.println(term);
+		  System.out.println(candidateTermScore.get(term));
+	  }
+	  */
+	  
+	  int termNum = 0;
+	  for (Map.Entry<String, Double> entry : list) {
+		  String term = entry.getKey();
+		  double score = entry.getValue();
+          expandedQuery.append(String.format("%.4f %s ", score, term));
+		  termNum += 1;
+	      if (termNum >= model.fbTerms)
+	        break;
+	    }
+	  
+      expandedQuery.append(")");
+      return expandedQuery.toString();
+
+	  
+	  
+  }
+  
   private static String expandQuery(ScoreList score_list, RetrievalModelIndri model) throws IOException {
       StringBuilder expandedQuery = new StringBuilder("#wand (");
 
       Map<String, Double> termScores = new HashMap<>();     // stores score for each term t
       Map<String, Double> termMLE = new HashMap<>();        // stores corpus-specific statistic for term t
       Map<String, List<Integer>> invList = new HashMap<>(); // inverted list for term t
-
-      // The initial query Qoriginal retrieves the top-ranked n documents
-      // int docSize = Math.min(fbDocs, referenceRanking.size());
       score_list.truncate((int)model.fbDocs);
-
       // Extract potential expansion terms from top n documents
-
-      // `Idx.getSumOfFieldLengths("body")` is extremely slow, to boost speed,
-      // better to cache it one time rather than compute it every time we call `expandQuery`
       double corpusLen = Idx.getSumOfFieldLengths("body");
-
       for (int i = 0; i < score_list.size(); i++) {
           int docid = score_list.getDocid(i);
           double docScore = score_list.getDocidScore(i);
           double docLen = Idx.getFieldLength("body", docid);
-
-          // Retrieve the term vector for externalID
           TermVector termVector = new TermVector(docid, "body");
 
-          // Calculate a score for each potential expansion term
-          // termVector[0] = null: START FROM 1 !!!
           for (int j = 0; j < termVector.stemsLength(); j++) {
               String term = termVector.stemString(j);
 
