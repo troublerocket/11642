@@ -4,8 +4,11 @@ import java.util.*;
 public class QrySopWAnd extends QryWSop {
 
 	public boolean docIteratorHasMatch (RetrievalModel r) {
-		    return this.docIteratorHasMatchMin(r);
-		  }
+        if (r instanceof RetrievalModelIndri)
+            return this.docIteratorHasMatchMin (r);
+        else
+            return this.docIteratorHasMatchAll (r);		  
+    }
 	
 	public double getScore(RetrievalModel r) throws IOException{
 		if (r instanceof RetrievalModelIndri) {

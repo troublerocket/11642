@@ -95,7 +95,7 @@ public abstract class Qry {
    *  docIteratorHasMatch caches the matching docid so that
    *  docIteratorGetMatch and getScore don't have to recompute it.
    */
-  private int docIteratorMatchCache = Qry.INVALID_DOCID;
+  public int docIteratorMatchCache = Qry.INVALID_DOCID;
   
   private boolean matchStored = false;	// Operators can cache matches
   private int matchingDocid;

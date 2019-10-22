@@ -15,8 +15,10 @@ public class QrySopAnd extends QrySop {
    *  @return True if the query matches, otherwise false.
    */
   public boolean docIteratorHasMatch (RetrievalModel r) {
-    return this.docIteratorHasMatchAll(r);
-  }
+      if (r instanceof RetrievalModelIndri)
+          return this.docIteratorHasMatchMin (r);
+      else
+          return this.docIteratorHasMatchAll (r);  }
 
   /**
    *  Get a score for the document that docIteratorHasMatch matched.
@@ -92,15 +94,20 @@ public class QrySopAnd extends QrySop {
       for (Qry q : this.args) {
     	  
           if (q.docIteratorHasMatch(r) && q.docIteratorGetMatch() == docid) {
+    	  //if(((QrySop) q).docIteratorMatchCache != this.docIteratorMatchCache) {
         	  
               //score *= ((QrySop) q).getScore(r);
         	  score *= Math.pow(((QrySop)q).getScore(r), 1.0/this.args.size());
+        	  //score *= Math.pow(((QrySop) q).getDefaultScore(r, docid), 1.0/this.args.size());
+
           }
           
           else {
         	  
               //score *= ((QrySop) q).getDefaultScore(r, docid);
         	  score *= Math.pow(((QrySop) q).getDefaultScore(r, docid), 1.0/this.args.size());
+        	  //score *= Math.pow(((QrySop)q).getScore(r), 1.0/this.args.size());
+
 
           }
           

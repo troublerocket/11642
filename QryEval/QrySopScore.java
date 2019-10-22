@@ -106,6 +106,7 @@ public class QrySopScore extends QrySop {
   public double getScoreIndri(RetrievalModel r) throws IOException {
 	  	//System.out.println("Get score indri");
 		Qry q = this.args.get(0);
+		
 		//if(q.docIteratorHasMatchCache()) {
 		//if (q.docIteratorHasMatch(r)) {
 			//System.out.println("matched doc\n");
@@ -132,7 +133,8 @@ public class QrySopScore extends QrySop {
 			return score;
 		//}
 		//return 0.0;
-	  
+		 
+		//return ((QryIop)q).getScoreIndri(r);
   }
 
   

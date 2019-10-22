@@ -5,6 +5,7 @@
  *  Compatible with Lucene 8.1.1.
  */
 import java.io.*;
+import java.math.BigDecimal;
 import java.text.DecimalFormat;
 import java.util.*;
 
@@ -263,11 +264,13 @@ public class QryEval {
 				
 				//System.out.println(qid + ": " + expandedQuery + "\n");
 				//expansion.close();
-                String combined_query = "#wand (" + String.valueOf(fbOrigWeight) + " " + " #and (" + query + ") " + " "
+                String originalQuery  = model.defaultQrySopName ()+ "(" + query + ")";
+                String combinedQuery = "#wand (" + String.valueOf(fbOrigWeight) + " " +originalQuery + " "
                         + String.valueOf(1 - fbOrigWeight) + " " + expandedQuery + " )";
                 
-                query = combined_query;
-                //System.out.println(" combined query " + combined_query);
+                query = combinedQuery;
+                
+                System.out.println(" combined query " + qid+ ": "+combinedQuery);
                  //results= processQuery(combined_query, model);
 	                
 			}
@@ -372,8 +375,9 @@ public class QryEval {
 		  for (int i = 0; i < output_length; i++) {
 	        //System.out.println("\t" + i + ":  " + Idx.getExternalDocid(result.getDocid(i)) + ", "
 	        //    + result.getDocidScore(i));
-			  String outstring = String.format("%s\t%s\t%s\t%d\t%f\t%s\n",queryName, "Q0", 
-						Idx.getExternalDocid(result.getDocid(i)), i+1, result.getDocidScore(i), "run-1");
+			  BigDecimal longlonglong = new BigDecimal(result.getDocidScore(i));
+			  String outstring = String.format("%s\t%s\t%s\t%d\t%s\t%s\n",queryName, "Q0", 
+						Idx.getExternalDocid(result.getDocid(i)), i+1, longlonglong.toString(), "run-1");
 			  //String outstring = queryName + " Q0 "+ Idx.getExternalDocid(result.getDocid(i)) + " "
 			//		  + (i+1) + " " + result.getDocidScore(i) + " run-1\n";
 			  System.out.println(outstring);

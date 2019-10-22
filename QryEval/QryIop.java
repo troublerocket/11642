@@ -248,6 +248,37 @@ public abstract class QryIop extends Qry {
 	  
   }
   
+  public double getScoreIndri(RetrievalModel r) throws IOException{
+	  
+	  
+		//Qry q = this.args.get(0);
+		//if(q.docIteratorHasMatchCache()) {
+		//if (q.docIteratorHasMatch(r)) {
+			//System.out.println("matched doc\n");
+			//String field = (this.field);
+
+			double lambda = ((RetrievalModelIndri) r).lambda;
+			double mu = ((RetrievalModelIndri) r).mu;
+
+			double ctf = (this.getCtf());	
+			//double tf = ((QryIop) q).docIteratorGetMatchPosting().tf;
+			
+			double tf = (this.invertedList.postings.get(this.docIteratorIndex).tf);
+			//double tf2 = ((QryIop)q).getInvertedList().postings.get(q.docIteratorGetMatch()).tf;
+			
+			double doc_len = Idx.getFieldLength(this.field, this.invertedList.getDocid (this.docIteratorIndex));
+			//double doc_len = Idx.getFieldLength(field, ((QryIop)q).getInvertedList().getDocid(((QryIop)q).docIteratorIndex));
+			
+			double collection_len = Idx.getSumOfFieldLengths(this.field);
+			
+			double mle = ctf / collection_len;
+			//double score = (1 - lambda) * (tf + mu * ctf / collection_len) / (doc_len + mu) + lambda * ctf /collection_len;
+			double score = (1.0 - lambda) * (tf + mu * mle) / (doc_len + mu) + lambda * mle;
+			
+			return score;
+	  
+  }
+  
 
  
 
