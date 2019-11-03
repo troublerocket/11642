@@ -42,7 +42,7 @@ public class QryEval {
   private static final String[] TEXT_FIELDS =
       {"body", "url", "keywords", "title"};
   
-  private static int letorFeatureNum = 18;
+  //private static int letorFeatureNum = 18;
   
   private static int trecEvalOutputLength;
   
@@ -172,11 +172,114 @@ public class QryEval {
     return model;
   }
   
+  public static List<Double> getFeatureVector(int int_id, String query, double k_1, double b, double k_3, double lambda, double mu) throws IOException{
+	  List<Double> fv = new ArrayList<>();
+	  
+	  // f1: spam score for d (read from index)
+	  double f1 = Double.parseDouble(Idx.getAttribute("spamScore", int_id));
+	  fv.add(f1);
+  	
+	  // f2: url depth for d(number of '/' in the rawUrl field)
+	  String rawUrl = Idx.getAttribute("rawUrl", int_id);
+	  double f2 = 0.0;
+      for (int i = 0; i < rawUrl.length(); i ++)
+          if (rawUrl.charAt(i) == '/')
+          	f2 += 1;
+      fv.add(f2);
+       
+      // f3: FromWikipedia score for d (1 if the rawUrl contains "wikipedia.org", otherwise 0)
+      double f3 = 0.0;
+      if (rawUrl.contains("wikipedia.org"))
+      	f3 = 1.0;
+      fv.add(f3);
+      
+      // f4: PageRank score for d (read from index).
+      double f4 = Double.parseDouble(Idx.getAttribute("PageRank", int_id));
+      fv.add(f4);
+      
+      QrySopScore sop_score = new QrySopScore();
+      
+      // f5: BM25 score for <q, d_body>
+      double f5 = sop_score.getScoreBM25(int_id, query, "body", k_1, b, k_3);
+      fv.add(f5);
 
+      // f6: Indri score for <q, d_body>
+      double f6 = sop_score.getScoreIndri(int_id, query, "body", lambda, mu);
+      fv.add(f6);
+			
+      // f7: Term overlap score (also called Coordination Match) for <q, d_body>
+      double f7 = sop_score.getOverlapScore(int_id, query, "body");
+      fv.add(f7);
+		
+      // f8: BM25 score for <q, d_title>
+      double f8 = sop_score.getScoreBM25(int_id, query, "title", k_1, b, k_3);
+      fv.add(f8);
+
+      // f9: Indri score for <q, d_title>
+      double f9 = sop_score.getScoreIndri(int_id, query, "title", lambda, mu);
+      fv.add(f9);
+      
+      // f10: Term overlap score (also called Coordination Match) for <q, d_title>
+      double f10 = sop_score.getOverlapScore(int_id, query, "title");
+      fv.add(f10);
+      
+      // f11: BM25 score for <q, d_url>
+      double f11 = sop_score.getScoreBM25(int_id, query, "url", k_1, b, k_3);
+      fv.add(f11);
+      
+      // f12: Indri score for <q, d_url>
+      double f12 = sop_score.getScoreIndri(int_id, query, "url", lambda, mu);
+      fv.add(f12);
+      
+      // f13: Term overlap score (also called Coordination Match) for <q, d_url>
+      double f13 = sop_score.getOverlapScore(int_id, query, "url");
+      fv.add(f13);
+      
+      // f14: BM25 score for <q, d_inlink>
+      double f14 = sop_score.getScoreBM25(int_id, query, "inlink", k_1, b, k_3);
+      fv.add(f14);
+      
+      // f15: Indri score for <q, d_inlink>
+      double f15 = sop_score.getScoreIndri(int_id, query, "inlink", lambda, mu);
+      fv.add(f15);
+      
+      // f16: Term overlap score (also called Coordination Match) for <q, d_inlink>
+      double f16 = sop_score.getOverlapScore(int_id, query, "inlink");
+      fv.add(f16);
+      
+      // f17: Your custom feature - avg term frequency = tf / # terms
+      double f17 = sop_score.getAvgtfScore(int_id, query, "body");
+      fv.add(f17);
+      
+      // f18: Your custom feature - tf * idf score for <q, d_body>
+      double f18 = sop_score.getTfIdfScore(int_id, query, "body");
+      fv.add(f18);
+      
+      return fv;
+
+  }
   
+  public static List<Double> fvNormalization(List<Double> fv, double Min[], double Max[]) {
+	  for(int i = 0; i < fv.size(); i++) {
+  		double min = Min[i];
+  		double max = Max[i];
+  		double score = fv.get(i);
+  		if(score != Double.MIN_VALUE) {
+  			if(min != max)
+  				fv.set(i, (score - min) / (max - min));
+  			else
+  				fv.set(i, 0.0);
+  		}
+  		else
+  			fv.set(i, 0.0);
+	  }
+	  
+	  return fv;
+	  
+  }
+
   public static void initializeLetor(RetrievalModel model) throws Exception {
 	    RetrievalModelLetor letor = (RetrievalModelLetor) model;
-	    /*
 	    String trainQuery = letor.trainQuery;
 	    String trainQrels = letor.trainQrels;
 	    String trainFV = letor.trainFV;
@@ -193,18 +296,17 @@ public class QryEval {
 		double b = letor.b;
 		double mu = letor.mu;
 		double lambda = letor.lambda;
-		*/
 	    
 	    // read the featureDisable
 	    List<Integer> disabledFeatures = new ArrayList<>();
-	    if (letor.featureDisable != null) {
-	    	for(String f : letor.featureDisable.split(",")) {
+	    if (featureDisable != null) {
+	    	for(String f : featureDisable.split(",")) {
 	    		disabledFeatures.add(Integer.parseInt(f));
 	    	}
 	    }
 	    
 	    // read the trainingQrels file
-	    BufferedReader input = new BufferedReader(new FileReader(letor.trainQrels));
+	    BufferedReader input = new BufferedReader(new FileReader(trainQrels));
 
 	    Map<Integer, List<String>> query_doc_map = new HashMap<>();	// query and relevant documents
 
@@ -232,7 +334,7 @@ public class QryEval {
 	    }	   
 	    input.close();
 	    
-	    input = new BufferedReader(new FileReader(letor.trainQuery));
+	    input = new BufferedReader(new FileReader(trainQuery));
 	    //line = null;
 
 	    Map<Integer, String> query_map = new HashMap<>();
@@ -263,95 +365,18 @@ public class QryEval {
 	    	List<String> ext_docs = query_doc_map.get(q_id);
 	    	Collections.sort(ext_docs);
 	    	
-	        double Min[] = new double[letorFeatureNum];
-	        double Max[] = new double[letorFeatureNum];
-	        for (int i = 0; i < letorFeatureNum; i ++) {
+	        double Min[] = new double[18];
+	        double Max[] = new double[18];
+	        for (int i = 0; i < 18; i ++) {
 	          Min[i] = Double.MAX_VALUE;
 	          Max[i] = - Double.MAX_VALUE;
 	        }
+	        
 	        for(String ext_id : ext_docs) {
 	        	List<Double> fv = new ArrayList<>();
 	        	int int_id = Idx.getInternalDocid(ext_id);
-			
-	        	// f1: spam score for d (read from index)
-	        	double f1 = Double.parseDouble(Idx.getAttribute("spamScore", int_id));
-	        	fv.add(f1);
 	        	
-	        	// f2: url depth for d(number of '/' in the rawUrl field)
-	        	String rawUrl = Idx.getAttribute("rawUrl", int_id);
-	        	double f2 = 0.0;
-	            for (int i = 0; i < rawUrl.length(); i ++)
-	                if (rawUrl.charAt(i) == '/')
-	                	f2 += 1;
-	             fv.add(f2);
-	             
-	            // f3: FromWikipedia score for d (1 if the rawUrl contains "wikipedia.org", otherwise 0)
-	            double f3 = 0.0;
-	            if (rawUrl.contains("wikipedia.org"))
-	            	f3 = 1.0;
-	            fv.add(f3);
-	            
-	            // f4: PageRank score for d (read from index).
-	            double f4 = Double.parseDouble(Idx.getAttribute("PageRank", int_id));
-	            fv.add(f4);
-	            
-	            QrySopScore sop_score = new QrySopScore();
-	            
-	            // f5: BM25 score for <q, d_body>
-	            double f5 = sop_score.getScoreBM25(int_id, query, "body", letor.k_1, letor.b, letor.k_3);
-	            fv.add(f5);
-
-				// f6: Indri score for <q, d_body>
-				double f6 = sop_score.getScoreIndri(int_id, query, "body", letor.lambda, letor.mu);
-				fv.add(f6);
-					
-				// f7: Term overlap score (also called Coordination Match) for <q, d_body>
-				double f7 = sop_score.getOverlapScore(int_id, query, "body");
-				fv.add(f7);
-				
-	            // f8: BM25 score for <q, d_title>
-	            double f8 = sop_score.getScoreBM25(int_id, query, "title", letor.k_1, letor.b, letor.k_3);
-	            fv.add(f8);
-
-				// f9: Indri score for <q, d_title>
-				double f9 = sop_score.getScoreIndri(int_id, query, "title", letor.lambda, letor.mu);
-				fv.add(f9);
-
-				// f10: Term overlap score (also called Coordination Match) for <q, d_title>
-				double f10 = sop_score.getOverlapScore(int_id, query, "title");
-				fv.add(f10);
-				
-				// f11: BM25 score for <q, d_url>
-	            double f11 = sop_score.getScoreBM25(int_id, query, "url", letor.k_1, letor.b, letor.k_3);
-	            fv.add(f11);
-	
-				// f12: Indri score for <q, d_url>
-				double f12 = sop_score.getScoreIndri(int_id, query, "url", letor.lambda, letor.mu);
-				fv.add(f12);
-
-				// f13: Term overlap score (also called Coordination Match) for <q, d_url>
-				double f13 = sop_score.getOverlapScore(int_id, query, "url");
-				fv.add(f13);
-				
-				// f14: BM25 score for <q, d_inlink>
-	            double f14 = sop_score.getScoreBM25(int_id, query, "inlink", letor.k_1, letor.b, letor.k_3);
-	            fv.add(f14);
-
-				// f15: Indri score for <q, d_inlink>
-				double f15 = sop_score.getScoreIndri(int_id, query, "inlink", letor.lambda, letor.mu);
-				fv.add(f15);
-
-				// f16: Term overlap score (also called Coordination Match) for <q, d_inlink>
-				double f16 = sop_score.getOverlapScore(int_id, query, "inlink");
-				fv.add(f16);
-				
-				// f17: Your custom feature - avg term frequency = tf / # terms
-				double f17 = sop_score.getAvgtfScore(int_id, query, "body");
-				fv.add(f17);
-				
-				// f18: Your custom feature - tf * idf score for <q, d_body>
-				double f18 = sop_score.getTfIdfScore(int_id, query, "body");
-				fv.add(f18);
+	        	fv = getFeatureVector(int_id, query, k_1, b ,k_3, lambda, mu);
 
 	        	doc_fv.put(ext_id, fv);
 	        	
@@ -362,40 +387,15 @@ public class QryEval {
 	            	Max[i] = Math.max(Max[i], score);
 	        		Min[i] = Math.min(Min[i], score);
 	            }
-  
-	        }// doc loop end
+	        }
 	        
 	        // Normalization
 	        for(String ext_id : ext_docs) {
-	        	//List<Double> fv = new ArrayList<>();
-	        	// CHECK!!!
-	        	/*
-	        	int int_id = 0;
-	        	try {
-	        		int_id = Idx.getInternalDocid(ext_id);
-				} catch (Exception e) {
-					// TODO Auto-generated catch block
-					//e.printStackTrace();
-					continue;
-				}
-				*/
 	        	
 	        	List<Double> fv = doc_fv.get(ext_id);
-	        	for(int i = 0; i < fv.size(); i++) {
-	        		double min = Min[i];
-	        		double max = Max[i];
-	        		double score = fv.get(i);
-	        		if(score != Double.MIN_VALUE) {
-	        			if(min != max)
-	        				fv.set(i, (score - min) / (max - min));
-	        			else
-	        				fv.set(i, 0.0);
-	        		}
-	        		else
-	        			fv.set(i, 0.0);
-
-	        	}// fv normalize loop 
-	            BufferedWriter output = new BufferedWriter(new FileWriter(letor.trainFV, true));
+	        	fv = fvNormalization(fv, Min, Max);
+	        	
+	            BufferedWriter output = new BufferedWriter(new FileWriter(trainFV, true));
 	            Map.Entry<Integer, String> pair = new AbstractMap.SimpleImmutableEntry<> (q_id, ext_id);
 	            output.write(qrel_map.get(pair) + " qid:" + q_id);
 	            
@@ -415,8 +415,8 @@ public class QryEval {
 	    
 	    // call svmrank to train a model
 	    Process cmdProc = Runtime.getRuntime().exec(
-	            new String[] { letor.svmRankLearn, "-c", String.valueOf(letor.svmParamC), letor.trainFV,
-	                letor.svmRankModel});
+	            new String[] { svmRankLearn, "-c", String.valueOf(svmParamC), trainFV,
+	                svmRankModel});
 	    BufferedReader stdoutReader = new BufferedReader(
 	            new InputStreamReader(cmdProc.getInputStream()));
 	    String l;
@@ -436,8 +436,8 @@ public class QryEval {
 	    }
 	    
 	    // generate testing data for top 100 documents in initial BM25 ranking
-	    RetrievalModel bm25 = new RetrievalModelBM25(letor.k_1, letor.b, letor.k_3);
-	    input = new BufferedReader(new FileReader(letor.queryFilePath));
+	    RetrievalModel bm25 = new RetrievalModelBM25(k_1, b, k_3);
+	    input = new BufferedReader(new FileReader(queryFilePath));
 	    
 	    Map<Integer, ScoreList> initRanking = new HashMap<>();
 	    qid_list.clear();
@@ -453,96 +453,19 @@ public class QryEval {
 			
 			doc_fv.clear();
 
-			double Min[] = new double[letorFeatureNum];
-		    double Max[] = new double[letorFeatureNum];
-		    for (int i = 0; i < letorFeatureNum; i ++) {
+			double Min[] = new double[18];
+		    double Max[] = new double[18];
+		    for (int i = 0; i < 18; i ++) {
 		    	Min[i] = Double.MAX_VALUE;
 		    	Max[i] = - Double.MAX_VALUE;
 		    }
-		    for(int j = 0; j < Math.min(results.size(),trecEvalOutputLength); j++) {
+		    for(int j = 0, len = Math.min(results.size(),trecEvalOutputLength); j < len; j++) {
 		    	int int_id = results.getDocid(j);// int_id check!!!!!!
 		        String ext_id = Idx.getExternalDocid(int_id);
-		        
 		        List<Double> fv = new ArrayList<>();
-	        	double f1 = Double.parseDouble(Idx.getAttribute("spamScore", int_id));
-	        	fv.add(f1);
-	        	
-	        	// f2: url depth for d(number of '/' in the rawUrl field)
-	        	String rawUrl = Idx.getAttribute("rawUrl", int_id);
-	        	double f2 = 0.0;
-	            for (int i = 0; i < rawUrl.length(); i ++)
-	                if (rawUrl.charAt(i) == '/')
-	                	f2 += 1;
-	             fv.add(f2);
-	             
-	            // f3: FromWikipedia score for d (1 if the rawUrl contains "wikipedia.org", otherwise 0)
-	            double f3 = 0.0;
-	            if (rawUrl.contains("wikipedia.org"))
-	            	f3 = 1.0;
-	            fv.add(f3);
-	            
-	            // f4: PageRank score for d (read from index).
-	            double f4 = Double.parseDouble(Idx.getAttribute("PageRank", int_id));
-	            fv.add(f4);
-	            
-	            QrySopScore sop_score = new QrySopScore();
-	            
-	            // f5: BM25 score for <q, d_body>
-	            double f5 = sop_score.getScoreBM25(int_id, query, "body", letor.k_1, letor.b, letor.k_3);
-	            fv.add(f5);
-
-				// f6: Indri score for <q, d_body>
-				double f6 = sop_score.getScoreIndri(int_id, query, "body", letor.lambda, letor.mu);
-				fv.add(f6);
-					
-				// f7: Term overlap score (also called Coordination Match) for <q, d_body>
-				double f7 = sop_score.getOverlapScore(int_id, query, "body");
-				fv.add(f7);
-				
-	            // f8: BM25 score for <q, d_title>
-	            double f8 = sop_score.getScoreBM25(int_id, query, "title", letor.k_1, letor.b, letor.k_3);
-	            fv.add(f8);
-
-				// f9: Indri score for <q, d_title>
-				double f9 = sop_score.getScoreIndri(int_id, query, "title", letor.lambda, letor.mu);
-				fv.add(f9);
-
-				// f10: Term overlap score (also called Coordination Match) for <q, d_title>
-				double f10 = sop_score.getOverlapScore(int_id, query, "title");
-				fv.add(f10);
-				
-				// f11: BM25 score for <q, d_url>
-	            double f11 = sop_score.getScoreBM25(int_id, query, "url", letor.k_1, letor.b, letor.k_3);
-	            fv.add(f11);
-	
-				// f12: Indri score for <q, d_url>
-				double f12 = sop_score.getScoreIndri(int_id, query, "url", letor.lambda, letor.mu);
-				fv.add(f12);
-
-				// f13: Term overlap score (also called Coordination Match) for <q, d_url>
-				double f13 = sop_score.getOverlapScore(int_id, query, "url");
-				fv.add(f13);
-				
-				// f14: BM25 score for <q, d_inlink>
-	            double f14 = sop_score.getScoreBM25(int_id, query, "inlink", letor.k_1, letor.b, letor.k_3);
-	            fv.add(f14);
-
-				// f15: Indri score for <q, d_inlink>
-				double f15 = sop_score.getScoreIndri(int_id, query, "inlink", letor.lambda, letor.mu);
-				fv.add(f15);
-
-				// f16: Term overlap score (also called Coordination Match) for <q, d_inlink>
-				double f16 = sop_score.getOverlapScore(int_id, query, "inlink");
-				fv.add(f16);
-				
-				// f17: Your custom feature - avg term frequency = tf / # terms
-				double f17 = sop_score.getAvgtfScore(int_id, query, "body");
-				fv.add(f17);
-				
-				// f18: Your custom feature - tf * idf score for <q, d_body>
-				double f18 = sop_score.getTfIdfScore(int_id, query, "body");
-				fv.add(f18);
-				
+		        
+		        fv= getFeatureVector(int_id, query, k_1, b, k_3, lambda, mu);
+		        
 				doc_fv.put(ext_id, fv);
 				for (int i = 0; i < fv.size(); i ++) {
 	            	double score = fv.get(i);
@@ -553,27 +476,16 @@ public class QryEval {
 	            }
 				
 		    }// doc loop
-		    for(int j = 0; j < Math.min(results.size(),trecEvalOutputLength); j++) {
+		    
+		    for(int j = 0, len = Math.min(results.size(),trecEvalOutputLength); j < len; j++) {
 		    	int int_id = results.getDocid(j);
 		    	String ext_id = Idx.getExternalDocid(int_id);
 		    	
 	        	List<Double> fv = doc_fv.get(ext_id);
 	        	// normalize
-		    	for(int i = 0; i < fv.size(); i++) {
-	        		double min = Min[i];
-	        		double max = Max[i];
-	        		double score = fv.get(i);
-	        		if(score != Double.MIN_VALUE) {
-	        			if(min != max)
-	        				fv.set(i, (score - min) / (max - min));
-	        			else
-	        				fv.set(i, 0.0);
-	        		}
-	        		else
-	        			fv.set(i, 0.0);
-
-	        	}// fv normalize loop 
-		    	BufferedWriter output = new BufferedWriter(new FileWriter(letor.testFV, true));
+	        	fv = fvNormalization(fv, Min, Max);
+		    	
+		    	BufferedWriter output = new BufferedWriter(new FileWriter(testFV, true));
 	            //Map.Entry<Integer, String> pair = new AbstractMap.SimpleImmutableEntry<> (q_id, ext_id);
 	            output.write(0 + " qid:" + q_id);
 	            
@@ -597,8 +509,8 @@ public class QryEval {
 	    // call svmrank to produce scores for the test data
 
 	    cmdProc = Runtime.getRuntime().exec(
-	    		new String[] { letor.svmRankClassify, letor.testFV,
-	                    letor.svmRankModel, letor.testDocScore});
+	    		new String[] { svmRankClassify, testFV,
+	                    svmRankModel, testDocScore});
 	    stdoutReader = new BufferedReader(
 	            new InputStreamReader(cmdProc.getInputStream()));
 	    String l1;
@@ -617,7 +529,7 @@ public class QryEval {
 	    }
 	    
 	    // read in the svmrank scores and re-rank the initial ranking based on the scores
-	    input = new BufferedReader(new FileReader(letor.testDocScore));
+	    input = new BufferedReader(new FileReader(testDocScore));
 	    
 	    List<Double> svm_scores = new ArrayList<>();
 	    line = null;
@@ -628,10 +540,10 @@ public class QryEval {
 	    for (int i = 0; i < qid_list.size(); i++) {
 	      int qid = qid_list.get(i);
 	      ScoreList results = initRanking.get(qid);
-	      for (int j = 0; j < Math.min(results.size(), trecEvalOutputLength); j++) 
+	      for (int j = 0, len = Math.min(results.size(), trecEvalOutputLength); j < len; j++) 
 	    	  results.setDocidScore(j, svm_scores.get(rank++));
 	      
-	      for (int j = Math.min(results.size(), trecEvalOutputLength); j < results.size(); j ++)
+	      for (int len = Math.min(results.size(), trecEvalOutputLength), j = len; j < results.size(); j ++)
 	        results.setDocidScore(j, -Double.MAX_VALUE);
 	      results.sort();
 	      printResults(String.valueOf(qid), results, trecEvalOutputPath, trecEvalOutputLength);
@@ -774,10 +686,8 @@ public class QryEval {
 			}
 		}
 		
-	
         ScoreList results = processQuery(query, model);
         
-
         if (results != null) { 
           printResults(qid, results, trecEvalOutputPath, length);
           System.out.println();
@@ -791,8 +701,7 @@ public class QryEval {
       // check close
       if(expansion != null)
     	  expansion.close();
-      
-      
+
     }
   }
   
