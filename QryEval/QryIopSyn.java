@@ -1,8 +1,11 @@
 /**
  *  Copyright (c) 2019, Carnegie Mellon University.  All Rights Reserved.
  */
-import java.io.*;
-import java.util.*;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Vector;
 
 /**
  *  The SYN operator for all retrieval models.

@@ -2,11 +2,13 @@
  *  Copyright (c) 2019, Carnegie Mellon University.  All Rights Reserved.
  */
 
-import java.io.*;
-import java.util.*;
+import java.io.IOException;
+import java.io.StringReader;
+import java.util.ArrayList;
+import java.util.List;
 
-import org.apache.lucene.analysis.en.EnglishAnalyzerConfigurable;
 import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.en.EnglishAnalyzerConfigurable;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 
 /**

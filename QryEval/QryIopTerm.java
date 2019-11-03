@@ -1,8 +1,7 @@
 /**
  *  Copyright (c) 2019, Carnegie Mellon University.  All Rights Reserved.
  */
-import java.io.*;
-import java.util.*;
+import java.io.IOException;
 
 /**
  *  The TERM operator for all retrieval models.  The TERM operator stores

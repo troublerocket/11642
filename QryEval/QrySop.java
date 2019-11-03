@@ -1,7 +1,7 @@
 /** 
  *  Copyright (c) 2019, Carnegie Mellon University.  All Rights Reserved.
  */
-import java.io.*;
+import java.io.IOException;
 
 /**
  *  The root class of all query operators that use a retrieval model

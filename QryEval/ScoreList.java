@@ -1,8 +1,11 @@
 /**
  *  Copyright (c) 2019, Carnegie Mellon University.  All Rights Reserved.
  */
-import java.io.*;
-import java.util.*;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
 
 /**
  *  This class implements the document score list data structure

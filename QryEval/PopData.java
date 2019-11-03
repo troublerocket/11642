@@ -2,9 +2,6 @@
  *  Copyright (c) 2019, Carnegie Mellon University.  All Rights Reserved.
  */
 
-import java.io.*;
-import java.util.*;
-
 /**
  *  PopData is a simple utility class for returning two items (a tuple
  *  of length two) from a method.  The tuple represents data that was

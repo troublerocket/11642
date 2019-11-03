@@ -2,7 +2,7 @@
  *  Copyright (c) 2019, Carnegie Mellon University.  All Rights Reserved.
  */
 
-import java.io.*;
+import java.io.IOException;
 
 import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.Term;

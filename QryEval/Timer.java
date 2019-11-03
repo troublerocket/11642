@@ -1,7 +1,8 @@
 /**
  *  Copyright (c) 2019, Carnegie Mellon University.  All Rights Reserved.
  */
-import java.math.*;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 
 /**
  *  A simple timer.

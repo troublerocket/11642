@@ -1,8 +1,8 @@
 /**
  *  Copyright (c) 2019, Carnegie Mellon University.  All Rights Reserved.
  */
-import java.io.*;
-import java.util.*;
+import java.io.IOException;
+import java.util.ArrayList;
 
 /**
  *  The NEAR operator for all retrieval models.  The TERM operator stores

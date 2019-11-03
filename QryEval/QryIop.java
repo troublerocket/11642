@@ -1,8 +1,8 @@
 /**
  *  Copyright (c) 2019, Carnegie Mellon University.  All Rights Reserved.
  */
-import java.io.*;
-import java.util.*;
+import java.io.IOException;
+import java.util.Vector;
 
 /**
  *  All query operators that return inverted lists are subclasses of

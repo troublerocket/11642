@@ -1,12 +1,15 @@
 /**
  *  Copyright (c) 2019, Carnegie Mellon University.  All Rights Reserved.
  */
-import java.util.*;
-import java.io.*;
+import java.io.IOException;
+import java.util.List;
+import java.util.Vector;
 
-import org.apache.lucene.index.*;
-import org.apache.lucene.util.*;
-import org.apache.lucene.search.*;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.PostingsEnum;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.util.BytesRef;
 
 /**
  *  This class implements the inverted list data structure and

@@ -4,15 +4,24 @@
  *  
  *  Compatible with Lucene 8.1.1.
  */
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.math.BigDecimal;
-import java.text.DecimalFormat;
-import java.util.*;
+import java.util.AbstractMap;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Scanner;
 
 
-import org.apache.lucene.index.*;
 
-import static java.lang.Math.*;
 
 
 /**
@@ -32,6 +41,13 @@ public class QryEval {
   
   private static final String[] TEXT_FIELDS =
       {"body", "url", "keywords", "title"};
+  
+  private static int letorFeatureNum = 18;
+  
+  private static int trecEvalOutputLength;
+  
+  private static String trecEvalOutputPath;
+
   
   //  --------------- Methods ---------------------------------------
 
@@ -63,8 +79,7 @@ public class QryEval {
 
     Idx.open (parameters.get ("indexPath"));
     RetrievalModel model = initializeRetrievalModel (parameters);
-    //if(parameters.get("fb").equals("true"))
-    //System.out.println("true");
+
     if(parameters.containsKey("fb") && parameters.get("fb").equals("true")) {
     	String fbInitialRankingFile = "";
     	//String fbExpansionFile = "";
@@ -79,12 +94,20 @@ public class QryEval {
     				fbInitialRankingFile, parameters.get("fbExpansionQueryFile"));
     	
     }
-    
+
+ 
   
     //  Perform experiments.
-    
-    processQueryFile(parameters.get("queryFilePath"), parameters.get("trecEvalOutputPath"),
-    		Integer.parseInt(parameters.get("trecEvalOutputLength")), model);
+    if(!(model instanceof RetrievalModelLetor)) {
+        processQueryFile(parameters.get("queryFilePath"), parameters.get("trecEvalOutputPath"),
+        		Integer.parseInt(parameters.get("trecEvalOutputLength")), model);   	
+    }
+    else {
+    	trecEvalOutputLength = Integer.parseInt(parameters.get("trecEvalOutputLength"));
+    	trecEvalOutputPath = parameters.get("trecEvalOutputPath");
+    	initializeLetor(model);
+    }
+
 
     //  Clean up.
     
@@ -135,6 +158,9 @@ public class QryEval {
         //System.out.println("lambda:"+lambda);
 
         model = new RetrievalModelIndri(mu, lambda);
+    }else if(modelString.equals("letor")) {
+    	
+    	model = new RetrievalModelLetor(parameters);
     }
 
     else {
@@ -144,6 +170,474 @@ public class QryEval {
     }
       
     return model;
+  }
+  
+
+  
+  public static void initializeLetor(RetrievalModel model) throws Exception {
+	    RetrievalModelLetor letor = (RetrievalModelLetor) model;
+	    /*
+	    String trainQuery = letor.trainQuery;
+	    String trainQrels = letor.trainQrels;
+	    String trainFV = letor.trainFV;
+		String featureDisable = letor.featureDisable;
+		String svmRankLearn = letor.svmRankLearn;
+		String svmRankClassify = letor.svmRankClassify;
+		String svmRankModel = letor.svmRankModel;
+		double svmParamC = letor.svmParamC;
+		String queryFilePath = letor.queryFilePath;
+		String testFV = letor.testFV;
+		String testDocScore = letor.testDocScore;
+		double k_1 = letor.k_1;
+		double k_3 = letor.k_3;
+		double b = letor.b;
+		double mu = letor.mu;
+		double lambda = letor.lambda;
+		*/
+	    
+	    // read the featureDisable
+	    List<Integer> disabledFeatures = new ArrayList<>();
+	    if (letor.featureDisable != null) {
+	    	for(String f : letor.featureDisable.split(",")) {
+	    		disabledFeatures.add(Integer.parseInt(f));
+	    	}
+	    }
+	    
+	    // read the trainingQrels file
+	    BufferedReader input = new BufferedReader(new FileReader(letor.trainQrels));
+
+	    Map<Integer, List<String>> query_doc_map = new HashMap<>();	// query and relevant documents
+
+	    Map<Map.Entry<Integer, String>, Integer> qrel_map = new HashMap<>(); // relevance judgments
+	    
+	    String line = null;
+	    while((line = input.readLine()) != null) {
+	        String[] str = line.split("\\s+");
+	        int q_id = Integer.parseInt(str[0]);
+	        String externalDocid = str[2];
+	        int relScore = Integer.parseInt(str[3]);
+	        
+	        List<String> doc_list = new ArrayList<>();
+	        // clear cache
+	        doc_list.clear();
+	        
+	        if (query_doc_map.containsKey(q_id)) {
+	          doc_list = query_doc_map.get(q_id);
+	        }
+	        doc_list.add(externalDocid);
+	        query_doc_map.put(q_id, doc_list);
+	        
+	        Map.Entry<Integer, String> pair = new AbstractMap.SimpleImmutableEntry<> (q_id, externalDocid);
+	        qrel_map.put(pair, relScore);
+	    }	   
+	    input.close();
+	    
+	    input = new BufferedReader(new FileReader(letor.trainQuery));
+	    //line = null;
+
+	    Map<Integer, String> query_map = new HashMap<>();
+	    List<Integer> qid_list = new ArrayList<Integer>(query_map.size());
+
+	    
+	    while((line = input.readLine()) != null) {
+	    	int idx= line.indexOf(":");
+	    	
+			int q_id = Integer.parseInt(line.substring(0, idx));
+			String query = line.substring(idx + 1);
+			
+			qid_list.add(q_id);
+			query_map.put(q_id, query);
+	    	
+	    }
+	    input.close();
+	    
+	    //List<Integer> qid_list = new ArrayList<Integer>(query_map.size());
+	    // check
+	    //qid_list.addAll(query_map.keySet());
+	    Collections.sort(qid_list);
+	    
+	    Map<String, List<Double>> doc_fv = new HashMap<>();
+	    for(int q_id : qid_list) {
+	    	doc_fv.clear();
+	    	String query = query_map.get(q_id);
+	    	List<String> ext_docs = query_doc_map.get(q_id);
+	    	Collections.sort(ext_docs);
+	    	
+	        double Min[] = new double[letorFeatureNum];
+	        double Max[] = new double[letorFeatureNum];
+	        for (int i = 0; i < letorFeatureNum; i ++) {
+	          Min[i] = Double.MAX_VALUE;
+	          Max[i] = - Double.MAX_VALUE;
+	        }
+	        for(String ext_id : ext_docs) {
+	        	List<Double> fv = new ArrayList<>();
+	        	int int_id = Idx.getInternalDocid(ext_id);
+			
+	        	// f1: spam score for d (read from index)
+	        	double f1 = Double.parseDouble(Idx.getAttribute("spamScore", int_id));
+	        	fv.add(f1);
+	        	
+	        	// f2: url depth for d(number of '/' in the rawUrl field)
+	        	String rawUrl = Idx.getAttribute("rawUrl", int_id);
+	        	double f2 = 0.0;
+	            for (int i = 0; i < rawUrl.length(); i ++)
+	                if (rawUrl.charAt(i) == '/')
+	                	f2 += 1;
+	             fv.add(f2);
+	             
+	            // f3: FromWikipedia score for d (1 if the rawUrl contains "wikipedia.org", otherwise 0)
+	            double f3 = 0.0;
+	            if (rawUrl.contains("wikipedia.org"))
+	            	f3 = 1.0;
+	            fv.add(f3);
+	            
+	            // f4: PageRank score for d (read from index).
+	            double f4 = Double.parseDouble(Idx.getAttribute("PageRank", int_id));
+	            fv.add(f4);
+	            
+	            QrySopScore sop_score = new QrySopScore();
+	            
+	            // f5: BM25 score for <q, d_body>
+	            double f5 = sop_score.getScoreBM25(int_id, query, "body", letor.k_1, letor.b, letor.k_3);
+	            fv.add(f5);
+
+				// f6: Indri score for <q, d_body>
+				double f6 = sop_score.getScoreIndri(int_id, query, "body", letor.lambda, letor.mu);
+				fv.add(f6);
+					
+				// f7: Term overlap score (also called Coordination Match) for <q, d_body>
+				double f7 = sop_score.getOverlapScore(int_id, query, "body");
+				fv.add(f7);
+				
+	            // f8: BM25 score for <q, d_title>
+	            double f8 = sop_score.getScoreBM25(int_id, query, "title", letor.k_1, letor.b, letor.k_3);
+	            fv.add(f8);
+
+				// f9: Indri score for <q, d_title>
+				double f9 = sop_score.getScoreIndri(int_id, query, "title", letor.lambda, letor.mu);
+				fv.add(f9);
+
+				// f10: Term overlap score (also called Coordination Match) for <q, d_title>
+				double f10 = sop_score.getOverlapScore(int_id, query, "title");
+				fv.add(f10);
+				
+				// f11: BM25 score for <q, d_url>
+	            double f11 = sop_score.getScoreBM25(int_id, query, "url", letor.k_1, letor.b, letor.k_3);
+	            fv.add(f11);
+	
+				// f12: Indri score for <q, d_url>
+				double f12 = sop_score.getScoreIndri(int_id, query, "url", letor.lambda, letor.mu);
+				fv.add(f12);
+
+				// f13: Term overlap score (also called Coordination Match) for <q, d_url>
+				double f13 = sop_score.getOverlapScore(int_id, query, "url");
+				fv.add(f13);
+				
+				// f14: BM25 score for <q, d_inlink>
+	            double f14 = sop_score.getScoreBM25(int_id, query, "inlink", letor.k_1, letor.b, letor.k_3);
+	            fv.add(f14);
+
+				// f15: Indri score for <q, d_inlink>
+				double f15 = sop_score.getScoreIndri(int_id, query, "inlink", letor.lambda, letor.mu);
+				fv.add(f15);
+
+				// f16: Term overlap score (also called Coordination Match) for <q, d_inlink>
+				double f16 = sop_score.getOverlapScore(int_id, query, "inlink");
+				fv.add(f16);
+				
+				// f17: Your custom feature - avg term frequency = tf / # terms
+				double f17 = sop_score.getAvgtfScore(int_id, query, "body");
+				fv.add(f17);
+				
+				// f18: Your custom feature - tf * idf score for <q, d_body>
+				double f18 = sop_score.getTfIdfScore(int_id, query, "body");
+				fv.add(f18);
+
+	        	doc_fv.put(ext_id, fv);
+	        	
+	            for (int i = 0; i < fv.size(); i ++) {
+	            	double score = fv.get(i);
+	            	if(score == Double.MIN_VALUE)// invalid score
+	            		continue;
+	            	Max[i] = Math.max(Max[i], score);
+	        		Min[i] = Math.min(Min[i], score);
+	            }
+  
+	        }// doc loop end
+	        
+	        // Normalization
+	        for(String ext_id : ext_docs) {
+	        	//List<Double> fv = new ArrayList<>();
+	        	// CHECK!!!
+	        	/*
+	        	int int_id = 0;
+	        	try {
+	        		int_id = Idx.getInternalDocid(ext_id);
+				} catch (Exception e) {
+					// TODO Auto-generated catch block
+					//e.printStackTrace();
+					continue;
+				}
+				*/
+	        	
+	        	List<Double> fv = doc_fv.get(ext_id);
+	        	for(int i = 0; i < fv.size(); i++) {
+	        		double min = Min[i];
+	        		double max = Max[i];
+	        		double score = fv.get(i);
+	        		if(score != Double.MIN_VALUE) {
+	        			if(min != max)
+	        				fv.set(i, (score - min) / (max - min));
+	        			else
+	        				fv.set(i, 0.0);
+	        		}
+	        		else
+	        			fv.set(i, 0.0);
+
+	        	}// fv normalize loop 
+	            BufferedWriter output = new BufferedWriter(new FileWriter(letor.trainFV, true));
+	            Map.Entry<Integer, String> pair = new AbstractMap.SimpleImmutableEntry<> (q_id, ext_id);
+	            output.write(qrel_map.get(pair) + " qid:" + q_id);
+	            
+	            for (int i = 0; i < fv.size(); i ++) {
+	                if (disabledFeatures.contains(i + 1))
+	                  continue;
+	                BigDecimal longlonglong = new BigDecimal(fv.get(i));
+	  			  	String outstring = " " + (i + 1) + ":" + longlonglong.toString();
+	  			  	output.write(outstring);
+	            }
+	            output.write(" # " + ext_id + "\n");
+	            output.close();
+
+	        } // doc loop 
+	    	
+	    }// query loop end
+	    
+	    // call svmrank to train a model
+	    Process cmdProc = Runtime.getRuntime().exec(
+	            new String[] { letor.svmRankLearn, "-c", String.valueOf(letor.svmParamC), letor.trainFV,
+	                letor.svmRankModel});
+	    BufferedReader stdoutReader = new BufferedReader(
+	            new InputStreamReader(cmdProc.getInputStream()));
+	    String l;
+	    while ((l = stdoutReader.readLine()) != null) {
+	      System.out.println(l);
+	    }
+	    // consume stderr and print it for debugging purposes
+	    BufferedReader stderrReader = new BufferedReader(
+	            new InputStreamReader(cmdProc.getErrorStream()));
+	    while ((l = stderrReader.readLine()) != null) {
+	      System.out.println(l);
+	    }
+
+	    int retValue = cmdProc.waitFor();
+	    if (retValue != 0) {
+	      throw new Exception("SVM Rank crashed.");
+	    }
+	    
+	    // generate testing data for top 100 documents in initial BM25 ranking
+	    RetrievalModel bm25 = new RetrievalModelBM25(letor.k_1, letor.b, letor.k_3);
+	    input = new BufferedReader(new FileReader(letor.queryFilePath));
+	    
+	    Map<Integer, ScoreList> initRanking = new HashMap<>();
+	    qid_list.clear();
+	    line = null;
+	    while((line = input.readLine()) != null) {
+	    	int idx= line.indexOf(":");
+	    	
+			int q_id = Integer.parseInt(line.substring(0, idx));
+			qid_list.add(q_id);
+			String query = line.substring(idx + 1);
+			ScoreList results = processQuery(query, bm25);
+			initRanking.put(q_id, results);
+			
+			doc_fv.clear();
+
+			double Min[] = new double[letorFeatureNum];
+		    double Max[] = new double[letorFeatureNum];
+		    for (int i = 0; i < letorFeatureNum; i ++) {
+		    	Min[i] = Double.MAX_VALUE;
+		    	Max[i] = - Double.MAX_VALUE;
+		    }
+		    for(int j = 0; j < Math.min(results.size(),trecEvalOutputLength); j++) {
+		    	int int_id = results.getDocid(j);// int_id check!!!!!!
+		        String ext_id = Idx.getExternalDocid(int_id);
+		        
+		        List<Double> fv = new ArrayList<>();
+	        	double f1 = Double.parseDouble(Idx.getAttribute("spamScore", int_id));
+	        	fv.add(f1);
+	        	
+	        	// f2: url depth for d(number of '/' in the rawUrl field)
+	        	String rawUrl = Idx.getAttribute("rawUrl", int_id);
+	        	double f2 = 0.0;
+	            for (int i = 0; i < rawUrl.length(); i ++)
+	                if (rawUrl.charAt(i) == '/')
+	                	f2 += 1;
+	             fv.add(f2);
+	             
+	            // f3: FromWikipedia score for d (1 if the rawUrl contains "wikipedia.org", otherwise 0)
+	            double f3 = 0.0;
+	            if (rawUrl.contains("wikipedia.org"))
+	            	f3 = 1.0;
+	            fv.add(f3);
+	            
+	            // f4: PageRank score for d (read from index).
+	            double f4 = Double.parseDouble(Idx.getAttribute("PageRank", int_id));
+	            fv.add(f4);
+	            
+	            QrySopScore sop_score = new QrySopScore();
+	            
+	            // f5: BM25 score for <q, d_body>
+	            double f5 = sop_score.getScoreBM25(int_id, query, "body", letor.k_1, letor.b, letor.k_3);
+	            fv.add(f5);
+
+				// f6: Indri score for <q, d_body>
+				double f6 = sop_score.getScoreIndri(int_id, query, "body", letor.lambda, letor.mu);
+				fv.add(f6);
+					
+				// f7: Term overlap score (also called Coordination Match) for <q, d_body>
+				double f7 = sop_score.getOverlapScore(int_id, query, "body");
+				fv.add(f7);
+				
+	            // f8: BM25 score for <q, d_title>
+	            double f8 = sop_score.getScoreBM25(int_id, query, "title", letor.k_1, letor.b, letor.k_3);
+	            fv.add(f8);
+
+				// f9: Indri score for <q, d_title>
+				double f9 = sop_score.getScoreIndri(int_id, query, "title", letor.lambda, letor.mu);
+				fv.add(f9);
+
+				// f10: Term overlap score (also called Coordination Match) for <q, d_title>
+				double f10 = sop_score.getOverlapScore(int_id, query, "title");
+				fv.add(f10);
+				
+				// f11: BM25 score for <q, d_url>
+	            double f11 = sop_score.getScoreBM25(int_id, query, "url", letor.k_1, letor.b, letor.k_3);
+	            fv.add(f11);
+	
+				// f12: Indri score for <q, d_url>
+				double f12 = sop_score.getScoreIndri(int_id, query, "url", letor.lambda, letor.mu);
+				fv.add(f12);
+
+				// f13: Term overlap score (also called Coordination Match) for <q, d_url>
+				double f13 = sop_score.getOverlapScore(int_id, query, "url");
+				fv.add(f13);
+				
+				// f14: BM25 score for <q, d_inlink>
+	            double f14 = sop_score.getScoreBM25(int_id, query, "inlink", letor.k_1, letor.b, letor.k_3);
+	            fv.add(f14);
+
+				// f15: Indri score for <q, d_inlink>
+				double f15 = sop_score.getScoreIndri(int_id, query, "inlink", letor.lambda, letor.mu);
+				fv.add(f15);
+
+				// f16: Term overlap score (also called Coordination Match) for <q, d_inlink>
+				double f16 = sop_score.getOverlapScore(int_id, query, "inlink");
+				fv.add(f16);
+				
+				// f17: Your custom feature - avg term frequency = tf / # terms
+				double f17 = sop_score.getAvgtfScore(int_id, query, "body");
+				fv.add(f17);
+				
+				// f18: Your custom feature - tf * idf score for <q, d_body>
+				double f18 = sop_score.getTfIdfScore(int_id, query, "body");
+				fv.add(f18);
+				
+				doc_fv.put(ext_id, fv);
+				for (int i = 0; i < fv.size(); i ++) {
+	            	double score = fv.get(i);
+	            	if(score == Double.MIN_VALUE)// invalid score
+	            		continue;
+	            	Max[i] = Math.max(Max[i], score);
+	        		Min[i] = Math.min(Min[i], score);
+	            }
+				
+		    }// doc loop
+		    for(int j = 0; j < Math.min(results.size(),trecEvalOutputLength); j++) {
+		    	int int_id = results.getDocid(j);
+		    	String ext_id = Idx.getExternalDocid(int_id);
+		    	
+	        	List<Double> fv = doc_fv.get(ext_id);
+	        	// normalize
+		    	for(int i = 0; i < fv.size(); i++) {
+	        		double min = Min[i];
+	        		double max = Max[i];
+	        		double score = fv.get(i);
+	        		if(score != Double.MIN_VALUE) {
+	        			if(min != max)
+	        				fv.set(i, (score - min) / (max - min));
+	        			else
+	        				fv.set(i, 0.0);
+	        		}
+	        		else
+	        			fv.set(i, 0.0);
+
+	        	}// fv normalize loop 
+		    	BufferedWriter output = new BufferedWriter(new FileWriter(letor.testFV, true));
+	            //Map.Entry<Integer, String> pair = new AbstractMap.SimpleImmutableEntry<> (q_id, ext_id);
+	            output.write(0 + " qid:" + q_id);
+	            
+	            for (int i = 0; i < fv.size(); i ++) {
+	                if (disabledFeatures.contains(i + 1))
+	                  continue;
+	                BigDecimal longlonglong = new BigDecimal(fv.get(i));
+	  			  	String outstring = " " + (i + 1) + ":" + longlonglong.toString();
+	  			  	output.write(outstring);
+	            }
+	            output.write(" # " + ext_id + "\n");
+	            output.close();
+
+		    }// doc loop
+
+		      
+	    }// test query loop end
+
+	    input.close();
+	    
+	    // call svmrank to produce scores for the test data
+
+	    cmdProc = Runtime.getRuntime().exec(
+	    		new String[] { letor.svmRankClassify, letor.testFV,
+	                    letor.svmRankModel, letor.testDocScore});
+	    stdoutReader = new BufferedReader(
+	            new InputStreamReader(cmdProc.getInputStream()));
+	    String l1;
+	    while ((l1 = stdoutReader.readLine()) != null) {
+	      System.out.println(l1);
+	    }
+	    // consume stderr and print it for debugging purposes
+	    stderrReader = new BufferedReader(
+	            new InputStreamReader(cmdProc.getErrorStream()));
+	    while ((l1 = stderrReader.readLine()) != null) {
+	      System.out.println(l1);
+	    }
+	    retValue = cmdProc.waitFor();
+	    if (retValue != 0) {
+	      throw new Exception("SVM Rank crashed.");
+	    }
+	    
+	    // read in the svmrank scores and re-rank the initial ranking based on the scores
+	    input = new BufferedReader(new FileReader(letor.testDocScore));
+	    
+	    List<Double> svm_scores = new ArrayList<>();
+	    line = null;
+	    while((line = input.readLine()) != null) {
+	    	svm_scores.add(Double.parseDouble(line));
+	    }
+	    int rank = 0;
+	    for (int i = 0; i < qid_list.size(); i++) {
+	      int qid = qid_list.get(i);
+	      ScoreList results = initRanking.get(qid);
+	      for (int j = 0; j < Math.min(results.size(), trecEvalOutputLength); j++) 
+	    	  results.setDocidScore(j, svm_scores.get(rank++));
+	      
+	      for (int j = Math.min(results.size(), trecEvalOutputLength); j < results.size(); j ++)
+	        results.setDocidScore(j, -Double.MAX_VALUE);
+	      results.sort();
+	      printResults(String.valueOf(qid), results, trecEvalOutputPath, trecEvalOutputLength);
+	    }
+ 
+	  
   }
 
   /**
@@ -256,7 +750,7 @@ public class QryEval {
 					curr_scorelist = scorelist_map.get(qid);
 				}
 					
-				String expandedQuery = expandQuery2(curr_scorelist, (RetrievalModelIndri)model);
+				String expandedQuery = expandQuery(curr_scorelist, (RetrievalModelIndri)model);
                 //System.out.println(" expanded query " + expandedQuery);
                 //System.out.println(" fbExpansionQueryFile " + ((RetrievalModelIndri)model).fbExpansionQueryFile);
 				expansion = new BufferedWriter(new FileWriter(((RetrievalModelIndri)model).fbExpansionQueryFile,true));
@@ -445,7 +939,7 @@ public class QryEval {
   
   // NEED TO COMPLETE
   
-  private static String expandQuery2(ScoreList scorelist, RetrievalModelIndri model) throws IOException{
+  private static String expandQuery(ScoreList scorelist, RetrievalModelIndri model) throws IOException{
       StringBuilder expandedQuery = new StringBuilder("#wand (");
 	  Map<String, List<Integer>> term_doc_list = new HashMap<>();
 	  Map<String, Double> candidateTermScore = new HashMap<>();
@@ -554,99 +1048,7 @@ public class QryEval {
 	  
   }
   
-  private static String expandQuery(ScoreList score_list, RetrievalModelIndri model) throws IOException {
-      StringBuilder expandedQuery = new StringBuilder("#wand (");
 
-      Map<String, Double> termScores = new HashMap<>();     // stores score for each term t
-      Map<String, Double> termMLE = new HashMap<>();        // stores corpus-specific statistic for term t
-      Map<String, List<Integer>> invList = new HashMap<>(); // inverted list for term t
-      score_list.truncate((int)model.fbDocs);
-      // Extract potential expansion terms from top n documents
-      double corpusLen = Idx.getSumOfFieldLengths("body");
-      for (int i = 0; i < score_list.size(); i++) {
-          int docid = score_list.getDocid(i);
-          double docScore = score_list.getDocidScore(i);
-          double docLen = Idx.getFieldLength("body", docid);
-          TermVector termVector = new TermVector(docid, "body");
-
-          for (int j = 0; j < termVector.stemsLength(); j++) {
-              String term = termVector.stemString(j);
-
-              // Ignore any candidate expansion term that contains a period ('.') or a comma (',')
-              if (term == null || term.contains(".") || term.contains(",")) 
-            	  continue;
-
-              // Update inverted list for the current term
-              if (invList.containsKey(term)) {
-                  invList.get(term).add(docid);
-              } else {
-                  List<Integer> docs = new ArrayList<>();
-                  docs.add(docid);
-                  invList.put(term, docs);
-              }
-
-              double tf = termVector.stemFreq(j);
-
-              // Get/Update corpus-specific statistic (p(t|C) for the current term
-              double mle;
-              
-              if (termMLE.containsKey(term)) {
-                  mle = termMLE.get(term);
-              } 
-              else {
-                  double ctf = termVector.totalStemFreq(j);
-                  mle = ctf / corpusLen;
-                  termMLE.put(term, mle);
-              }
-
-              double score = (tf + model.fbMu * mle) / (docLen + model.fbMu);
-              double idf = Math.log(1. / mle);
-              double weightedScore = score * docScore * idf;
-
-              termScores.put(term, termScores.getOrDefault(term, 0d) + weightedScore);
-          }
-      }
-
-      /*
-       * Now we get m expansion terms from top n docs
-       * However, the term score for these m terms is not complete yet
-       * because some of the top n docs (referenceRanking) might not contain all the m terms
-       * but they still need to contribute to the final term score
-       * Therefore, we need to update term score on docs whose tf = 0
-       * */
-
-      for (String term : termScores.keySet()) {
-          List<Integer> docs = invList.get(term);
-          for (int i = 0; i < score_list.size(); i++) {
-              int docid = score_list.getDocid(i);
-              if (!docs.contains(docid)) {
-                  double docScore = score_list.getDocidScore(i);
-                  double docLen = Idx.getFieldLength("body", docid);
-
-                  double mle = termMLE.get(term);
-                  double score = (0 + model.fbMu * mle) / (docLen + model.fbMu);
-                  double idf = Math.log(1. / mle);
-                  double weightedScore = score * docScore * idf;
-
-                  termScores.put(term, termScores.get(term) + weightedScore);
-              }
-          }
-      }
-
-      // Sort the term scores by score value, leaving only m top terms in the map
-      termScores = MapUtil.sortByDescValue(termScores, (int)model.fbTerms);
-
-      // Use the top m terms to create an expansion query Qlearned
-      for (Map.Entry<String, Double> entry : termScores.entrySet()) {
-          String term = entry.getKey();
-          double score = entry.getValue();
-          expandedQuery.append(String.format("%.4f %s ", score, term));
-      }
-
-      expandedQuery.append(")");
-      return expandedQuery.toString();
-	  
-  }
 
 
 }

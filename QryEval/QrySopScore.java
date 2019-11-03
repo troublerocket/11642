@@ -2,8 +2,7 @@
  *  Copyright (c) 2019, Carnegie Mellon University.  All Rights Reserved.
  */
 
-import java.io.*;
-import java.lang.IllegalArgumentException;
+import java.io.IOException;
 
 /**
  *  The SCORE operator for all retrieval models.
@@ -100,8 +99,38 @@ public class QrySopScore extends QrySop {
 			return rsj_weight * tf_weight * user_weight;
 		}
 		return 0.0;	  
-	  
-	  
+
+  }
+  public double getScoreBM25(int doc_id, String query, String field, double k_1, double b, double k_3) throws IOException {
+	  		double score = 0.0;
+	  		
+	  		String[] qry_terms = QryParser.tokenizeString(query);
+			double doc_len = (double)Idx.getFieldLength(field, doc_id);
+			double avg_len = Idx.getSumOfFieldLengths(field) / (double) Idx.getDocCount(field);
+			TermVector tv = new TermVector(doc_id, field);
+			double N = (double)Idx.getNumDocs();
+			
+			if (tv.positionsLength() == 0)
+				return Double.MIN_VALUE;
+
+			for(String term : qry_terms) {
+			      int idx = tv.indexOfStem(term);
+			      if (idx == -1)
+			        continue;
+			      
+			      double tf = (double)tv.stemFreq(idx);
+			      double df = (double)tv.stemDf(idx); 
+			      
+			      double rsj_weight = Math.max(0, Math.log((N - df + 0.5) / (df + 0.5)));
+			      double tf_weight = tf / (tf + k_1 * (1 - b + b * doc_len / avg_len));
+			      double user_weight = (k_3 + 1) * 1 / (k_3 + 1);
+			      
+			      score += rsj_weight * tf_weight * user_weight;
+			
+			}
+			
+			return score;
+
   }
   public double getScoreIndri(RetrievalModel r) throws IOException {
 	  	//System.out.println("Get score indri");
@@ -136,6 +165,41 @@ public class QrySopScore extends QrySop {
 		 
 		//return ((QryIop)q).getScoreIndri(r);
   }
+  
+  public double getScoreIndri(int doc_id, String query, String field, double lambda, double mu) throws IOException {
+		
+	  		double score = 1.0;
+	  		String[] qry_terms = QryParser.tokenizeString(query);
+	  		
+			double doc_len = Idx.getFieldLength(field, doc_id);
+			double collection_len = Idx.getSumOfFieldLengths(field);
+
+			TermVector tv = new TermVector(doc_id, field);
+			if (tv.positionsLength() == 0)
+				return Double.MIN_VALUE;
+			boolean flag = false;
+			for(String term : qry_terms) {
+				int idx = tv.indexOfStem(term);
+			    double tf = 0.0;
+			    if (idx != -1) {
+			        tf = (double)tv.stemFreq(idx);
+			        flag = true;
+			      }
+				double ctf = (double)Idx.getTotalTermFreq(field, term);
+				
+				double mle = ctf / collection_len;
+				
+				double temp_score = (1 - lambda) * (tf + mu * mle) / (doc_len + mu) + lambda * mle;
+				
+				score *= (Math.pow(temp_score, 1.0 / (double)qry_terms.length));
+
+			}
+			if(flag)
+				return score;
+			else
+				return 0.0;
+
+  }
 
   
   public double getDefaultScore(RetrievalModel r, long doc_id) throws IOException {
@@ -162,7 +226,74 @@ public class QrySopScore extends QrySop {
 	    
 	    return score;
 	  }
+  
+	public double getOverlapScore(int doc_id, String query, String field) throws IOException {
+		
+		String[] qry_terms = QryParser.tokenizeString(query);
+	    double score = 0.0;
+	    TermVector tv = new TermVector(doc_id, field);
+	    for (String term : qry_terms) {
+	      if (tv.positionsLength() == 0)
+	        return Double.MIN_VALUE;
+	      int idx = tv.indexOfStem(term);
+	      if (idx == -1)
+	        continue;
+	      double tf = tv.stemFreq(idx);
+	      if (tf != 0)
+	        score += 1.0;
+	    }
+	    return score / (double)qry_terms.length;
+	}
+	
+	public double getTfIdfScore(int doc_id, String query, String field) throws IOException{
+  		double score = 0.0;
+  		
+  		String[] qry_terms = QryParser.tokenizeString(query);
+		TermVector tv = new TermVector(doc_id, field);
+	    double N = (double)Idx.getNumDocs();
 
+		
+		if (tv.positionsLength() == 0)
+			return Double.MIN_VALUE;
+
+		for(String term : qry_terms) {
+		      int idx = tv.indexOfStem(term);
+		      if (idx == -1)
+		        continue;
+		      double tf = (double)tv.stemFreq(idx);
+		      double df = (double)tv.stemDf(idx); 
+		      double idf = Math.max(0.0, Math.log((N - df + 0.5) / (df + 0.5)));
+		      
+		      score += tf * idf;
+		}
+		return score;
+
+	}
+	
+	public double getAvgtfScore(int doc_id, String query, String field) throws IOException{
+  		double score = 0.0;
+  		
+  		String[] qry_terms = QryParser.tokenizeString(query);
+		TermVector tv = new TermVector(doc_id, field);
+
+		if (tv.positionsLength() == 0)
+			return Double.MIN_VALUE;
+
+		for(String term : qry_terms) {
+		      int idx = tv.indexOfStem(term);
+		      if (idx == -1)
+		        continue;
+		      double tf = (double)tv.stemFreq(idx);
+		      
+		      score += tf;
+		}
+		if(qry_terms.length != 0)
+			return score / (double)qry_terms.length;
+		else
+			return 0.0;
+
+	}
+	
   /**
    *  Initialize the query operator (and its arguments), including any
    *  internal iterators.  If the query operator is of type QryIop, it
